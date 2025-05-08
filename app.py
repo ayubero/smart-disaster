@@ -5,7 +5,6 @@ from model import DisasterModel
 import plotly.graph_objects as go
 from streamlit_plotly_events import plotly_events
 import base64
-import random
 
 # --- Helper function to load images ---
 def encode_image(file_path):
@@ -17,19 +16,24 @@ shelter_icon = encode_image("assets/shelter.png")
 victim_icon = encode_image("assets/victim.png")
 
 # --- UI Parameters ---
+st.set_page_config(layout="centered")
+st.title("Disaster Simulation")
+
 width = st.slider('Grid Width', 5, 50, 10)
 height = st.slider('Grid Height', 5, 50, 10)
 num_agents = st.slider('Number of Agents', 1, 50, 10)
 steps = st.number_input('Simulation Steps', min_value=1, max_value=1000, value=10)
 delay = st.slider('Delay Between Steps (seconds)', 0.01, 1.0, 0.2)
 
-# Initialize session state for simulation control
+# Initialize session state
 if "model" not in st.session_state:
     st.session_state.model = None
 if "step" not in st.session_state:
     st.session_state.step = 0
 if "running" not in st.session_state:
     st.session_state.running = False
+if "clicked_agent" not in st.session_state:
+    st.session_state.clicked_agent = None
 
 # --- Run Button ---
 def start_simulation():
@@ -39,10 +43,7 @@ def start_simulation():
 
 st.button("Start Simulation", on_click=start_simulation)
 
-# --- Step Display ---
-step_placeholder = st.empty()
-plot_placeholder = st.empty()
-
+# --- Drawing function ---
 def draw_model(model):
     fig = go.Figure()
     images = []
@@ -77,7 +78,7 @@ def draw_model(model):
             )
         )
 
-        # One trace per agent
+        # Invisible marker to detect click
         fig.add_trace(go.Scatter(
             x=[x_center], y=[y_center],
             mode='markers',
@@ -100,15 +101,13 @@ def draw_model(model):
 
     return fig
 
-# --- Run Simulation Loop ---
-if st.session_state.running:
-    # Step once and render
-    model = st.session_state.model
-    model.step()
-    st.session_state.step += 1
+# --- Simulation Display ---
+step_placeholder = st.empty()
 
+if st.session_state.model:
     step_placeholder.subheader(f"Step {st.session_state.step}")
 
+    model = st.session_state.model
     fig = draw_model(model)
     clicked = plotly_events(
         fig,
@@ -117,24 +116,30 @@ if st.session_state.running:
         key="plot",
         override_height=600
     )
-    #plot_placeholder.plotly_chart(fig, use_container_width=True)
 
-    # Check for click interaction
     if clicked:
         x_click = int(clicked[0]['x'])
         y_click = int(clicked[0]['y'])
-        st.info(f"Clicked at ({x_click}, {y_click})")
+        st.session_state.clicked_agent = (x_click, y_click)
+    else:
+        st.session_state.clicked_agent = None
 
+    # Handle click
+    if st.session_state.clicked_agent:
+        x, y = st.session_state.clicked_agent
         for agent in model.agents:
-            if agent.pos == (x_click, y_click):
-                agent.perform_action()
+            if agent.pos == (x, y):
+                #agent.perform_action()
                 st.success(f"Action triggered for {type(agent).__name__} at {agent.pos}")
                 break
 
-    # Auto-advance with delay
-    if st.session_state.step < steps:
-        time.sleep(delay)
-        st.rerun()
-    else:
-        st.session_state.running = False
-        st.success("Simulation complete!")
+    # Step forward if running
+    if st.session_state.running:
+        if st.session_state.step < steps:
+            time.sleep(delay)
+            model.step()
+            st.session_state.step += 1
+            st.rerun()
+        else:
+            st.session_state.running = False
+            st.success("Simulation complete!")
