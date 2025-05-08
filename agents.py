@@ -12,7 +12,7 @@ class RescueAgent(Agent):
         neighbors = self.model.grid.get_neighbors(
             self.pos,
             moore = True, # Moore neighborhood (8 surrounding cells)
-            radius = 10,
+            #radius = 1,
             include_center = False # Not include the agent's own cell
         )
         nearby_victims = [a for a in neighbors if isinstance(a, VictimAgent)]
@@ -22,7 +22,7 @@ class RescueAgent(Agent):
             print('I found a victim!')
             # Rescue victim
             victim = nearby_victims[0]
-            self.model.grid.remove_agent(victim)
+            #self.model.grid.remove_agent(victim)
             self.rescuing = True
         else:
             # Search for victims

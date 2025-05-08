@@ -32,6 +32,7 @@ class DisasterModel(Model):
 
         for _ in range(num_victims):
             agent = VictimAgent(agent_id, self)
+            print('New victim agent placed')
             self.place_agent(agent)
             agent_id += 1
 
@@ -46,6 +47,7 @@ class DisasterModel(Model):
     def place_agent(self, agent):
         x = self.random.randrange(self.grid.width)
         y = self.random.randrange(self.grid.height)
+        print(x, y)
         self.grid.place_agent(agent, (x, y))
         self.agents.add(agent)
 
