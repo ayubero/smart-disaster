@@ -1,11 +1,12 @@
 from mesa import Model
 from mesa.space import MultiGrid
-from agents import RescueAgent, EvacuationAgent, ResourceAgent, ScoutAgent, CommandAgent
+from agents import RescueAgent, EvacuationAgent, ResourceAgent, ScoutAgent, VictimAgent, ShelterAgent, CommandAgent
 
 class DisasterModel(Model):
-    def __init__(self, width, height, num_rescuers=3, num_evacuators=2, num_resources=2, num_scouts=2):
+    def __init__(self, width, height, num_rescuers=3, num_evacuators=2, num_resources=2, num_scouts=2, num_victims=2, num_shelters=2):
         super().__init__()
         self.grid = MultiGrid(width, height, torus=False)
+        self.global_map = {}
 
         # Create agents
         agent_id = 0
@@ -29,6 +30,16 @@ class DisasterModel(Model):
             self.place_agent(agent)
             agent_id += 1
 
+        for _ in range(num_victims):
+            agent = VictimAgent(agent_id, self)
+            self.place_agent(agent)
+            agent_id += 1
+
+        for _ in range(num_shelters):
+            agent = ShelterAgent(agent_id, self)
+            self.place_agent(agent)
+            agent_id += 1
+
         command = CommandAgent(agent_id, self)
         self.place_agent(command)
     
@@ -39,4 +50,4 @@ class DisasterModel(Model):
         self.agents.add(agent)
 
     def step(self):
-        self.agents.shuffle_do("step")
+        self.agents.shuffle_do('step')
