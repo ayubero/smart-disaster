@@ -1,144 +1,138 @@
 from mesa import Agent
+from utils import *
 
-class RescueAgent(Agent):
+Agent.move_randomly = move_randomly
+Agent.move_towards = move_towards
+
+class TreeAgent(Agent):
     def __init__(self, unique_id, model):
         super().__init__(model)
-        self.rescuing = False
+        self.on_fire = False
 
     def step(self):
-        # Find nearby victims
-        #nearby_victims = [a for a in self.model.grid.get_cell_list_contents([self.pos])
-        #                  if isinstance(a, VictimAgent)]
-        neighbors = self.model.grid.get_neighbors(
-            self.pos,
-            moore = True, # Moore neighborhood (8 surrounding cells)
-            #radius = 1,
-            include_center = False # Not include the agent's own cell
-        )
-        nearby_victims = [a for a in neighbors if isinstance(a, VictimAgent)]
-        print('Number of nearby victims:', len(nearby_victims))
+        pass
 
-        if nearby_victims:
-            print('I found a victim!')
-            # Rescue victim
-            victim = nearby_victims[0]
-            #self.model.grid.remove_agent(victim)
-            self.rescuing = True
-        else:
-            # Search for victims
+class PrisonAgent(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(model)
+
+    def step(self):
+        pass
+
+class FirestationAgent(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(model)
+
+    def step(self):
+        pass
+
+class CitizenAgent(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(model)
+
+    def step(self):
+        self.move_randomly()
+        neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
+        for agent in neighbors:
+            if isinstance(agent, TreeAgent) and agent.on_fire:
+                #print(f'[CITIZEN] Reporting fire at {agent.pos}')
+                self.model.commander.report_fire(agent.pos)
+
+class ArsonistAgent(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(model)
+
+    def step(self):
+        neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
+
+        healthy_trees = [agent for agent in neighbors if isinstance(agent, TreeAgent) and not agent.on_fire]
+
+        if not healthy_trees:
             self.move_randomly()
+            return  # Nothing to do
 
-    def move_randomly(self):
-        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
-        new_position = self.random.choice(possible_steps)
-        self.model.grid.move_agent(self, new_position)
+        # Find the nearest tree
+        my_pos = self.pos
+        closest_tree = min(healthy_trees, key=lambda t: manhattan_distance(my_pos, t.pos))
 
+        # Move towards it if not already there
+        if self.pos != closest_tree.pos:
+            self.move_towards(closest_tree.pos)
+        else:
+            # Set the tree on fire
+            closest_tree.on_fire = True
 
-class EvacuationAgent(Agent):
-    def __init__(self, unique_id, model):
+class FirefighterAgent(Agent):
+    def __init__(self, unique_id, model, firestation_position):
         super().__init__(model)
-        self.carrying = None
+        self.goal = None # Coordinates of the fire (goal) that has to be put out
+        self.firestation_position = firestation_position
 
     def step(self):
-        if self.carrying:
-            # Move toward nearest shelter
-            shelter = self.model.find_nearest(self.pos, ShelterAgent)
-            if shelter:
-                self.move_towards(shelter.pos)
-                if self.pos == shelter.pos:
-                    self.carrying = None  # Drop civilian
-        else:
-            # Pick up nearby civilian
-            civilians = [a for a in self.model.grid.get_cell_list_contents([self.pos])
-                         if isinstance(a, CivilianAgent)]
-            if civilians:
-                self.carrying = civilians[0]
-                self.model.grid.remove_agent(self.carrying)
+        if self.goal:
+            if self.pos != self.goal:
+                self.move_towards(self.goal)
             else:
-                self.move_randomly()
+                # At the fire location
+                if self.goal not in self.model.firefighter_presence:
+                    self.model.firefighter_presence[self.goal] = set()
+                self.model.firefighter_presence[self.goal].add(self.unique_id)
 
-    def move_randomly(self):
-        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
-        new_position = self.random.choice(possible_steps)
-        self.model.grid.move_agent(self, new_position)
+                # Check for sufficient firefighters to put out the fire
+                if len(self.model.firefighter_presence[self.goal]) >= 3:
+                    # Extinguish the fire
+                    for agent in self.model.grid.get_cell_list_contents(self.goal):
+                        if isinstance(agent, TreeAgent) and agent.on_fire:
+                            agent.on_fire = False
+                            self.model.commander.known_fires.discard(self.goal)
+                            break
 
-    def move_towards(self, target_pos):
-        x, y = self.pos
-        tx, ty = target_pos
-        dx = 1 if tx > x else -1 if tx < x else 0
-        dy = 1 if ty > y else -1 if ty < y else 0
-        self.model.grid.move_agent(self, (x + dx, y + dy))
+                    # Reset fire info
+                    del self.model.firefighter_presence[self.goal]
 
-
-class ResourceAgent(Agent):
-    def __init__(self, unique_id, model):
-        super().__init__(model)
-        self.supplies = 1
-
-    def step(self):
-        if self.supplies == 0:
-            return
-
-        # Find agent to resupply
-        for neighbor in self.model.grid.get_neighbors(self.pos, moore=True, include_center=False):
-            if isinstance(neighbor, (RescueAgent, EvacuationAgent)):
-                # Resupply and exit
-                self.supplies = 0
-                return
-
-        self.move_randomly()
-
-    def move_randomly(self):
-        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
-        new_position = self.random.choice(possible_steps)
-        self.model.grid.move_agent(self, new_position)
-
-
-class ScoutAgent(Agent):
-    def __init__(self, unique_id, model):
-        super().__init__(model)
-        self.explored = set()
-
-    def step(self):
-        self.explored.add(self.pos)
-        self.model.global_map[self.pos] = "explored"
-        self.move_randomly()
-
-    def move_randomly(self):
-        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
-        unexplored = [pos for pos in possible_steps if pos not in self.explored]
-
-        if unexplored:
-            self.model.grid.move_agent(self, self.random.choice(unexplored))
+                    # All firefighters on this goal reset
+                    for agent in self.model.agents:
+                        if isinstance(agent, FirefighterAgent): #and agent.goal == self.goal
+                            agent.goal = None
         else:
-            self.model.grid.move_agent(self, self.random.choice(possible_steps))
+            fire_list = self.model.commander.get_fires()
+            if fire_list: # Vote
+                if not hasattr(self, "_vote") or self._vote is None:
+                    # Cast vote if not yet voted this round
+                    self._vote = self.random.choice(self.model.commander.get_fires())
+            else:
+                # No fire, return to firestation
+                if self.pos != self.firestation_position:
+                    self.move_towards(self.firestation_position)
 
-
-class CommandAgent(Agent):
+class PolicemanAgent(Agent):
     def __init__(self, unique_id, model):
         super().__init__(model)
 
     def step(self):
-        victim_count = sum(isinstance(a, VictimAgent) for a in self.model.agents)
-        print(f"[Command] Victims remaining: {victim_count}")
+        self.move_randomly()
 
-class VictimAgent(Agent):
+class CommanderAgent(Agent):
     def __init__(self, unique_id, model):
         super().__init__(model)
+        self.known_fires = set()
 
-    def step(self):
-        pass
+    def report_fire(self, pos):
+        self.known_fires.add(pos)
 
-class ShelterAgent(Agent):
-    def __init__(self, unique_id, model):
-        super().__init__(model)
-
-    def step(self):
-        pass
-
-class CivilianAgent(Agent):
-    def __init__(self, unique_id, model):
-        super().__init__(model)
+    def get_fires(self):
+        return list(self.known_fires)
+    
+    def tally_votes(self):
+        votes = [
+            agent._vote
+            for agent in self.model.agents
+            if isinstance(agent, FirefighterAgent) and getattr(agent, '_vote', None)
+        ]
+        if not votes:
+            return None
+        winning = max(set(votes), key=votes.count)
+        return winning
 
     def step(self):
         pass
