@@ -26,6 +26,8 @@ tree_image = pygame.image.load('assets/forest.png')
 tree_image = pygame.transform.scale(tree_image, (CELL_SIZE, CELL_SIZE))
 prison_image = pygame.image.load('assets/prison.png')
 prison_image = pygame.transform.scale(prison_image, (CELL_SIZE, CELL_SIZE))
+policestation_image = pygame.image.load('assets/police_station.png')
+policestation_image = pygame.transform.scale(policestation_image, (CELL_SIZE, CELL_SIZE))
 firestation_image = pygame.image.load('assets/fire_station.png')
 firestation_image = pygame.transform.scale(firestation_image, (CELL_SIZE, CELL_SIZE))
 arsonist_image = pygame.image.load('assets/thief.png')
@@ -70,6 +72,8 @@ def draw_agents(screen, model, frame_index, tween_factor):
                     screen.blit(frame, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'PrisonAgent':
                 screen.blit(prison_image, (screen_x, screen_y))
+            elif agent.__class__.__name__ == 'PolicestationAgent':
+                screen.blit(policestation_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'FirestationAgent':
                 screen.blit(firestation_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'CitizenAgent':

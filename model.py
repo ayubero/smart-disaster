@@ -1,9 +1,9 @@
 from mesa import Model
 from mesa.space import MultiGrid
-from agents import CommanderAgent, TreeAgent, PrisonAgent, FirestationAgent, CitizenAgent, ArsonistAgent, FirefighterAgent, PolicemanAgent
+from agents import CommanderAgent, TreeAgent, PrisonAgent, PolicestationAgent, FirestationAgent, CitizenAgent, ArsonistAgent, FirefighterAgent, PolicemanAgent
 
 class DisasterModel(Model):
-    def __init__(self, width, height, num_trees=20, num_prison=1, num_firestations=1, num_citizens=5, num_arsonists=1, num_firefighters=3, num_policemen=5):
+    def __init__(self, width, height, num_trees=20, num_prison=1, num_policestations=1, num_firestations=1, num_citizens=10, num_arsonists=1, num_firefighters=3, num_policemen=5):
         super().__init__()
         self.grid = MultiGrid(width, height, torus=False)
         self.global_map = {}
@@ -13,6 +13,7 @@ class DisasterModel(Model):
         # Create agents
         prison_positions = []
         firestation_positions = []
+        policestation_positions = []
 
         for _ in range(num_trees):
             agent = TreeAgent(self)
@@ -22,6 +23,11 @@ class DisasterModel(Model):
             agent = PrisonAgent(self)
             position = self.place_agent_without_colliding(agent)
             prison_positions.append(position)
+
+        for _ in range(num_policestations):
+            agent = PolicestationAgent(self)
+            position = self.place_agent_without_colliding(agent)
+            policestation_positions.append(position)
 
         for _ in range(num_firestations):
             agent = FirestationAgent(self)
@@ -42,9 +48,10 @@ class DisasterModel(Model):
             self.place_agent(agent, position)
 
         for _ in range(num_policemen):
-            position = prison_positions[0] if len(prison_positions) > 0 else None
-            agent = PolicemanAgent(self, position, position)
-            self.place_agent(agent, position)
+            prison_position = prison_positions[0] if len(prison_positions) > 0 else None
+            policestation_position = policestation_positions[0] if len(policestation_positions) > 0 else None
+            agent = PolicemanAgent(self, policestation_position, prison_position)
+            self.place_agent(agent, policestation_position)
 
         commander = CommanderAgent(self)
         self.place_agent(commander)

@@ -23,6 +23,9 @@ class PolicestationAgent(Agent):
     def __init__(self, model):
         super().__init__(model)
 
+    def step(self):
+        pass
+
 class FirestationAgent(Agent):
     def __init__(self, model):
         super().__init__(model)
@@ -39,14 +42,20 @@ class CitizenAgent(Agent):
         neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
         for agent in neighbors:
             if isinstance(agent, TreeAgent) and agent.on_fire:
-                #print(f'[CITIZEN] Reporting fire at {agent.pos}')
                 self.model.commander.report_fire(agent.pos)
+
+            if isinstance(agent, ArsonistAgent):
+                self.model.commander.report_arsonist(agent.pos)
 
 class ArsonistAgent(Agent):
     def __init__(self, model):
         super().__init__(model)
+        self.is_arrested = False
 
     def step(self):
+        if self.is_arrested:
+            return
+        
         # Look for policemen within 3 cells (Moore neighborhood)
         police_neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=False, radius=3)
         policemen = [a for a in police_neighbors if isinstance(a, PolicemanAgent)]
@@ -122,7 +131,7 @@ class FirefighterAgent(Agent):
         else:
             fire_list = self.model.commander.get_fires()
             if fire_list: # Vote
-                if not hasattr(self, "_vote") or self._vote is None:
+                if not hasattr(self, '_vote') or self._vote is None:
                     # Cast vote if not yet voted this round
                     self._vote = self.random.choice(self.model.commander.get_fires())
             else:
@@ -131,24 +140,55 @@ class FirefighterAgent(Agent):
                     self.move_towards(self.fire_station_position)
 
 class PolicemanAgent(Agent):
-    def __init__(self, model, police_station_position, prison_position):
+    def __init__(self, model, policestation_position, prison_position):
         super().__init__(model)
-        self.police_station_position = police_station_position
+        self.policestation_position = policestation_position
         self.prison_position = prison_position
+        self.target_arsonist = None
 
     def step(self):
-        self.move_randomly()
+        if self.target_arsonist is not None: #and self.model.grid.get_cell_list_contents(self.target_arsonist):
+            if self.pos == self.target_arsonist: # We arrived at the target location
+                self.target_arsonist = None
+            else:
+                self.move_towards(self.target_arsonist)
+        else:
+            self.target_arsonist = self.model.commander.get_arsonist_position()
+            if self.target_arsonist is not None:
+                self.move_towards(self.target_arsonist)
+
+        # Check if arsonist is at current position
+        cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        for agent in cell_agents:
+            if isinstance(agent, ArsonistAgent):
+                # Move arsonist to prison
+                self.model.grid.move_agent(agent, self.prison_position)
+                agent.is_arrested = True
+                self.target_arsonist = None
+
+        '''if self.target_arsonist is None:
+            self.move_towards(self.policestation_position)'''
 
 class CommanderAgent(Agent):
     def __init__(self, model):
         super().__init__(model)
         self.known_fires = set()
+        self.known_arsonist_positions = []
 
     def report_fire(self, pos):
         self.known_fires.add(pos)
 
     def get_fires(self):
         return list(self.known_fires)
+    
+    def report_arsonist(self, pos):
+        self.known_arsonist_positions.append(pos)
+
+    def get_arsonist_position(self):
+        if len(self.known_arsonist_positions) > 0:
+            return self.known_arsonist_positions.pop(0)
+        else:
+            return None
     
     def tally_votes(self):
         votes = [
