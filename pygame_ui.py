@@ -9,13 +9,11 @@ import glob
 WIDTH, HEIGHT = 1000, 1000
 GRID_WIDTH, GRID_HEIGHT = 20, 20
 CELL_SIZE = WIDTH // GRID_WIDTH
-FPS = 5
+FPS = 30
+INTERP_FRAMES = 5  # Frames between each model step
 
 # Colors
 BG_COLOR = (30, 30, 30)
-RESCUE_COLOR = (255, 100, 100)
-VICTIM_COLOR = (100, 200, 255)
-SHELTER_COLOR = (100, 255, 100)
 GRID_COLOR = (70, 70, 70)
 
 # Load fire animation frames
@@ -41,27 +39,33 @@ policeman_image = pygame.transform.scale(policeman_image, (CELL_SIZE, CELL_SIZE)
 citizen_image = pygame.image.load('assets/citizen.png')
 citizen_image = pygame.transform.scale(citizen_image, (CELL_SIZE, CELL_SIZE))
 
+def interpolate(a, b, t):
+    return a + (b - a) * t
+
 def draw_grid(screen):
     for x in range(0, WIDTH, CELL_SIZE):
         pygame.draw.line(screen, GRID_COLOR, (x, 0), (x, HEIGHT))
     for y in range(0, HEIGHT, CELL_SIZE):
         pygame.draw.line(screen, GRID_COLOR, (0, y), (WIDTH, y))
 
-def draw_agents(screen, model, frame_index):
+def draw_agents(screen, model, frame_index, tween_factor):
     for contents, (x, y) in model.grid.coord_iter():
         for agent in contents:
-            screen_x = x * CELL_SIZE
-            screen_y = y * CELL_SIZE
-            pos = (x * CELL_SIZE + CELL_SIZE // 2, y * CELL_SIZE + CELL_SIZE // 2)
-            if agent.__class__.__name__ == 'RescueAgent':
-                color = RESCUE_COLOR
-                radius = CELL_SIZE // 3
-                pygame.draw.circle(screen, color, pos, radius)
-            elif agent.__class__.__name__ == 'VictimAgent':
-                color = VICTIM_COLOR
-                radius = CELL_SIZE // 4
-                pygame.draw.circle(screen, color, pos, radius)
-            elif agent.__class__.__name__ == 'TreeAgent':
+            # Interpolated position
+            x, y = agent.pos
+            if hasattr(agent, 'prev_pos') and agent.prev_pos is not None:
+                x_prev, y_prev = agent.prev_pos
+                x_draw = interpolate(x_prev, x, tween_factor)
+                y_draw = interpolate(y_prev, y, tween_factor)
+            else:
+                x_draw, y_draw = x, y
+
+            screen_x = x_draw * CELL_SIZE
+            screen_y = y_draw * CELL_SIZE
+            pos = (int(screen_x + CELL_SIZE // 2), int(screen_y + CELL_SIZE // 2))
+
+            # Draw agents
+            if agent.__class__.__name__ == 'TreeAgent':
                 screen.blit(tree_image, (screen_x, screen_y))
                 if agent.on_fire:
                     frame = fire_frames[frame_index]
@@ -88,6 +92,7 @@ def main():
     model = DisasterModel(GRID_WIDTH, GRID_HEIGHT)
 
     frame_index = 0
+    interp_frame = 0
 
     running = True
     while running:
@@ -97,12 +102,23 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
-        #draw_grid(screen)
-        draw_agents(screen, model, frame_index)
+        tween_factor = interp_frame / INTERP_FRAMES
+        draw_agents(screen, model, frame_index, tween_factor)
 
         pygame.display.flip()
-        model.step()
         clock.tick(FPS)
+        interp_frame += 1
+
+        if interp_frame >= INTERP_FRAMES:
+            interp_frame = 0
+
+            # Set prev_pos before moving
+            for agent in model.agents:
+                if hasattr(agent, 'pos'):
+                    agent.prev_pos = agent.pos
+
+            model.step()
+
         frame_index = (frame_index + 1) % len(fire_frames)
 
     pygame.quit()

@@ -29,8 +29,10 @@ class FirestationAgent(Agent):
 class CitizenAgent(Agent):
     def __init__(self, unique_id, model):
         super().__init__(model)
+        self.prev_pos = None
 
     def step(self):
+        self.prev_pos = self.pos # Save the current position
         self.move_randomly()
         neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
         for agent in neighbors:
