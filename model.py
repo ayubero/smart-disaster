@@ -3,7 +3,7 @@ from mesa.space import MultiGrid
 from agents import CommanderAgent, TreeAgent, PrisonAgent, FirestationAgent, CitizenAgent, ArsonistAgent, FirefighterAgent, PolicemanAgent
 
 class DisasterModel(Model):
-    def __init__(self, width, height, num_trees=20, num_prison=1, num_firestations=1, num_citizens=5, num_arsonists=1, num_firefighters=3, num_policemen=2):
+    def __init__(self, width, height, num_trees=20, num_prison=1, num_firestations=1, num_citizens=5, num_arsonists=1, num_firefighters=3, num_policemen=5):
         super().__init__()
         self.grid = MultiGrid(width, height, torus=False)
         self.global_map = {}
@@ -11,47 +11,42 @@ class DisasterModel(Model):
         self.num_firefighters = num_firefighters
 
         # Create agents
-        agent_id = 0
+        prison_positions = []
         firestation_positions = []
 
         for _ in range(num_trees):
-            agent = TreeAgent(agent_id, self)
+            agent = TreeAgent(self)
             self.place_agent_without_colliding(agent)
-            agent_id += 1
 
         for _ in range(num_prison):
-            agent = PrisonAgent(agent_id, self)
-            self.place_agent_without_colliding(agent)
-            agent_id += 1
+            agent = PrisonAgent(self)
+            position = self.place_agent_without_colliding(agent)
+            prison_positions.append(position)
 
         for _ in range(num_firestations):
-            agent = FirestationAgent(agent_id, self)
+            agent = FirestationAgent(self)
             position = self.place_agent_without_colliding(agent)
-            agent_id += 1
             firestation_positions.append(position)
 
         for _ in range(num_citizens):
-            agent = CitizenAgent(agent_id, self)
+            agent = CitizenAgent(self)
             self.place_agent(agent)
-            agent_id += 1
 
         for _ in range(num_arsonists):
-            agent = ArsonistAgent(agent_id, self)
+            agent = ArsonistAgent(self)
             self.place_agent(agent)
-            agent_id += 1
 
         for _ in range(num_firefighters):
             position = firestation_positions[0] if len(firestation_positions) > 0 else None
-            agent = FirefighterAgent(agent_id, self, position)
+            agent = FirefighterAgent(self, position)
             self.place_agent(agent, position)
-            agent_id += 1
 
         for _ in range(num_policemen):
-            agent = PolicemanAgent(agent_id, self)
-            self.place_agent(agent)
-            agent_id += 1
+            position = prison_positions[0] if len(prison_positions) > 0 else None
+            agent = PolicemanAgent(self, position, position)
+            self.place_agent(agent, position)
 
-        commander = CommanderAgent(agent_id, self)
+        commander = CommanderAgent(self)
         self.place_agent(commander)
         self.commander = commander
     

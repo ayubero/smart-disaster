@@ -3,8 +3,6 @@ from model import DisasterModel
 import sys
 import glob
 
-
-
 # Settings
 WIDTH, HEIGHT = 1000, 1000
 GRID_WIDTH, GRID_HEIGHT = 20, 20
@@ -28,7 +26,7 @@ tree_image = pygame.image.load('assets/forest.png')
 tree_image = pygame.transform.scale(tree_image, (CELL_SIZE, CELL_SIZE))
 prison_image = pygame.image.load('assets/prison.png')
 prison_image = pygame.transform.scale(prison_image, (CELL_SIZE, CELL_SIZE))
-firestation_image = pygame.image.load('assets/firestation.png')
+firestation_image = pygame.image.load('assets/fire_station.png')
 firestation_image = pygame.transform.scale(firestation_image, (CELL_SIZE, CELL_SIZE))
 arsonist_image = pygame.image.load('assets/thief.png')
 arsonist_image = pygame.transform.scale(arsonist_image, (CELL_SIZE, CELL_SIZE))

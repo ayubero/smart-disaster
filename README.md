@@ -6,4 +6,4 @@ poetry install
 
 eval $(poetry env activate)
 
-streamlit run app.py
+python3 pygame_ui.py

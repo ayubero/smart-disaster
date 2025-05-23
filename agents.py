@@ -5,7 +5,7 @@ Agent.move_randomly = move_randomly
 Agent.move_towards = move_towards
 
 class TreeAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model):
         super().__init__(model)
         self.on_fire = False
 
@@ -13,26 +13,28 @@ class TreeAgent(Agent):
         pass
 
 class PrisonAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model):
         super().__init__(model)
 
     def step(self):
         pass
 
+class PolicestationAgent(Agent):
+    def __init__(self, model):
+        super().__init__(model)
+
 class FirestationAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model):
         super().__init__(model)
 
     def step(self):
         pass
 
 class CitizenAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model):
         super().__init__(model)
-        self.prev_pos = None
 
     def step(self):
-        self.prev_pos = self.pos # Save the current position
         self.move_randomly()
         neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
         for agent in neighbors:
@@ -41,34 +43,55 @@ class CitizenAgent(Agent):
                 self.model.commander.report_fire(agent.pos)
 
 class ArsonistAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model):
         super().__init__(model)
 
     def step(self):
-        neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
+        # Look for policemen within 3 cells (Moore neighborhood)
+        police_neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=False, radius=3)
+        policemen = [a for a in police_neighbors if isinstance(a, PolicemanAgent)]
 
+        if policemen:
+            # Run away from the nearest policeman
+            my_pos = self.pos
+            closest_cop = min(policemen, key=lambda p: manhattan_distance(my_pos, p.pos))
+            self.run_away_from(closest_cop.pos)
+            return
+
+        # Continue with tree-burning behavior
+        neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
         healthy_trees = [agent for agent in neighbors if isinstance(agent, TreeAgent) and not agent.on_fire]
 
         if not healthy_trees:
             self.move_randomly()
-            return  # Nothing to do
+            return
 
-        # Find the nearest tree
-        my_pos = self.pos
-        closest_tree = min(healthy_trees, key=lambda t: manhattan_distance(my_pos, t.pos))
-
-        # Move towards it if not already there
+        closest_tree = min(healthy_trees, key=lambda t: manhattan_distance(self.pos, t.pos))
         if self.pos != closest_tree.pos:
             self.move_towards(closest_tree.pos)
         else:
-            # Set the tree on fire
             closest_tree.on_fire = True
+    
+    def run_away_from(self, danger_pos):
+        # Get all adjacent cells (Moore neighborhood radius=1)
+        possible_moves = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
+        
+        # Filter only empty cells
+        empty_cells = [pos for pos in possible_moves if self.model.grid.is_cell_empty(pos)]
+
+        if not empty_cells:
+            self.move_randomly()
+            return
+
+        # Choose the farthest cell from the danger
+        farthest = max(empty_cells, key=lambda pos: manhattan_distance(pos, danger_pos))
+        self.model.grid.move_agent(self, farthest)
 
 class FirefighterAgent(Agent):
-    def __init__(self, unique_id, model, firestation_position):
+    def __init__(self, model, fire_station_position):
         super().__init__(model)
         self.goal = None # Coordinates of the fire (goal) that has to be put out
-        self.firestation_position = firestation_position
+        self.fire_station_position = fire_station_position
 
     def step(self):
         if self.goal:
@@ -104,18 +127,20 @@ class FirefighterAgent(Agent):
                     self._vote = self.random.choice(self.model.commander.get_fires())
             else:
                 # No fire, return to firestation
-                if self.pos != self.firestation_position:
-                    self.move_towards(self.firestation_position)
+                if self.pos != self.fire_station_position:
+                    self.move_towards(self.fire_station_position)
 
 class PolicemanAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model, police_station_position, prison_position):
         super().__init__(model)
+        self.police_station_position = police_station_position
+        self.prison_position = prison_position
 
     def step(self):
         self.move_randomly()
 
 class CommanderAgent(Agent):
-    def __init__(self, unique_id, model):
+    def __init__(self, model):
         super().__init__(model)
         self.known_fires = set()
 
