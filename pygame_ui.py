@@ -30,14 +30,22 @@ policestation_image = pygame.image.load('assets/police_station.png')
 policestation_image = pygame.transform.scale(policestation_image, (CELL_SIZE, CELL_SIZE))
 firestation_image = pygame.image.load('assets/fire_station.png')
 firestation_image = pygame.transform.scale(firestation_image, (CELL_SIZE, CELL_SIZE))
+hospital_image = pygame.image.load('assets/hospital.png')
+hospital_image = pygame.transform.scale(hospital_image, (CELL_SIZE, CELL_SIZE))
 arsonist_image = pygame.image.load('assets/thief.png')
 arsonist_image = pygame.transform.scale(arsonist_image, (CELL_SIZE, CELL_SIZE))
 firefighter_image = pygame.image.load('assets/firefighter.png')
 firefighter_image = pygame.transform.scale(firefighter_image, (CELL_SIZE, CELL_SIZE))
+firefighter_injured_image = pygame.image.load('assets/firefighter_injured.png')
+firefighter_injured_image = pygame.transform.scale(firefighter_injured_image, (CELL_SIZE, CELL_SIZE))
 policeman_image = pygame.image.load('assets/policeman.png')
 policeman_image = pygame.transform.scale(policeman_image, (CELL_SIZE, CELL_SIZE))
 citizen_image = pygame.image.load('assets/citizen.png')
 citizen_image = pygame.transform.scale(citizen_image, (CELL_SIZE, CELL_SIZE))
+citizen_injured_image = pygame.image.load('assets/citizen_injured.png')
+citizen_injured_image = pygame.transform.scale(citizen_injured_image, (CELL_SIZE, CELL_SIZE))
+ambulance_image = pygame.image.load('assets/ambulance.png')
+ambulance_image = pygame.transform.scale(ambulance_image, (CELL_SIZE, CELL_SIZE))
 
 def interpolate(a, b, t):
     return a + (b - a) * t
@@ -76,14 +84,24 @@ def draw_agents(screen, model, frame_index, tween_factor):
                 screen.blit(policestation_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'FirestationAgent':
                 screen.blit(firestation_image, (screen_x, screen_y))
+            elif agent.__class__.__name__ == 'HospitalAgent':
+                screen.blit(hospital_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'CitizenAgent':
-                screen.blit(citizen_image, (screen_x, screen_y))
+                if agent.injury_points > 0:
+                    screen.blit(citizen_injured_image, (screen_x, screen_y))
+                else:
+                    screen.blit(citizen_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'ArsonistAgent':
                 screen.blit(arsonist_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'FirefighterAgent':
-                screen.blit(firefighter_image, (screen_x, screen_y))
+                if agent.injury_points > 0:
+                    screen.blit(firefighter_injured_image, (screen_x, screen_y))
+                else:
+                    screen.blit(firefighter_image, (screen_x, screen_y))
             elif agent.__class__.__name__ == 'PolicemanAgent':
                 screen.blit(policeman_image, (screen_x, screen_y))
+            elif agent.__class__.__name__ == 'AmbulanceAgent':
+                screen.blit(ambulance_image, (screen_x, screen_y))
 
 def main():
     pygame.init()

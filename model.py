@@ -1,9 +1,9 @@
 from mesa import Model
 from mesa.space import MultiGrid
-from agents import CommanderAgent, TreeAgent, PrisonAgent, PolicestationAgent, FirestationAgent, CitizenAgent, ArsonistAgent, FirefighterAgent, PolicemanAgent
+from agents import TreeAgent, PrisonAgent, PolicestationAgent, FirestationAgent, HospitalAgent, CitizenAgent, ArsonistAgent, FirefighterAgent, PolicemanAgent, AmbulanceAgent, CommanderAgent
 
 class DisasterModel(Model):
-    def __init__(self, width, height, num_trees=20, num_prison=1, num_policestations=1, num_firestations=1, num_citizens=10, num_arsonists=1, num_firefighters=3, num_policemen=5):
+    def __init__(self, width, height, num_trees=20, num_prison=1, num_policestations=1, num_firestations=1, num_hospitals=1, num_citizens=10, num_arsonists=3, num_firefighters=3, num_policemen=4, num_ambulances=3):
         super().__init__()
         self.grid = MultiGrid(width, height, torus=False)
         self.global_map = {}
@@ -14,6 +14,7 @@ class DisasterModel(Model):
         prison_positions = []
         firestation_positions = []
         policestation_positions = []
+        hospital_positions = []
 
         for _ in range(num_trees):
             agent = TreeAgent(self)
@@ -34,6 +35,11 @@ class DisasterModel(Model):
             position = self.place_agent_without_colliding(agent)
             firestation_positions.append(position)
 
+        for _ in range(num_hospitals):
+            agent = HospitalAgent(self)
+            position = self.place_agent_without_colliding(agent)
+            hospital_positions.append(position)
+
         for _ in range(num_citizens):
             agent = CitizenAgent(self)
             self.place_agent(agent)
@@ -52,6 +58,11 @@ class DisasterModel(Model):
             policestation_position = policestation_positions[0] if len(policestation_positions) > 0 else None
             agent = PolicemanAgent(self, policestation_position, prison_position)
             self.place_agent(agent, policestation_position)
+
+        for _ in range(num_ambulances):
+            hospital_position = hospital_positions[0] if len(hospital_positions) > 0 else None
+            agent = AmbulanceAgent(self, hospital_position)
+            self.place_agent(agent, hospital_position)
 
         commander = CommanderAgent(self)
         self.place_agent(commander)

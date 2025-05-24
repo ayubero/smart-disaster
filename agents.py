@@ -1,6 +1,8 @@
 from mesa import Agent
 from utils import *
 
+INJURY_POINTS = 50 # Injury points received when encountering an arsonist
+
 Agent.move_randomly = move_randomly
 Agent.move_towards = move_towards
 
@@ -33,12 +35,26 @@ class FirestationAgent(Agent):
     def step(self):
         pass
 
-class CitizenAgent(Agent):
+class HospitalAgent(Agent):
     def __init__(self, model):
         super().__init__(model)
 
     def step(self):
-        self.move_randomly()
+        pass
+
+class CitizenAgent(Agent):
+    def __init__(self, model):
+        super().__init__(model)
+        self.is_injured = False
+        # If injury points is 0, then the citizen is healthy
+        self.injury_points = 0
+
+    def step(self):
+        # If the agent is not injured, he can walk
+        if self.injury_points < 1:
+            self.move_randomly()
+
+        # Check for problems around the agent
         neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=True)
         for agent in neighbors:
             if isinstance(agent, TreeAgent) and agent.on_fire:
@@ -46,6 +62,22 @@ class CitizenAgent(Agent):
 
             if isinstance(agent, ArsonistAgent):
                 self.model.commander.report_arsonist(agent.pos)
+
+            if isinstance(agent, CitizenAgent) and agent.injury_points > 0:
+                self.model.commander.report_injured(agent.pos)
+
+            if isinstance(agent, FirefighterAgent) and agent.injury_points > 0:
+                self.model.commander.report_injured(agent.pos)
+
+        # Check current cell for arsonist to become injured or hospital to heal
+        cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        for agent in cell_agents:
+            if isinstance(agent, ArsonistAgent):
+                self.injury_points = INJURY_POINTS
+                break  # No need to check further
+            if isinstance(agent, HospitalAgent):
+                self.injury_points -= 1
+                break
 
 class ArsonistAgent(Agent):
     def __init__(self, model):
@@ -101,43 +133,55 @@ class FirefighterAgent(Agent):
         super().__init__(model)
         self.goal = None # Coordinates of the fire (goal) that has to be put out
         self.fire_station_position = fire_station_position
+        self.injury_points = 0
 
     def step(self):
-        if self.goal:
-            if self.pos != self.goal:
-                self.move_towards(self.goal)
+        if self.injury_points < 1:
+            if self.goal:
+                if self.pos != self.goal:
+                    self.move_towards(self.goal)
+                else:
+                    # At the fire location
+                    if self.goal not in self.model.firefighter_presence:
+                        self.model.firefighter_presence[self.goal] = set()
+                    self.model.firefighter_presence[self.goal].add(self.unique_id)
+
+                    # Check for sufficient firefighters to put out the fire
+                    if len(self.model.firefighter_presence[self.goal]) >= 3:
+                        # Extinguish the fire
+                        for agent in self.model.grid.get_cell_list_contents(self.goal):
+                            if isinstance(agent, TreeAgent) and agent.on_fire:
+                                agent.on_fire = False
+                                self.model.commander.known_fires.discard(self.goal)
+                                break
+
+                        # Reset fire info
+                        del self.model.firefighter_presence[self.goal]
+
+                        # All firefighters on this goal reset
+                        for agent in self.model.agents:
+                            if isinstance(agent, FirefighterAgent): #and agent.goal == self.goal
+                                agent.goal = None
             else:
-                # At the fire location
-                if self.goal not in self.model.firefighter_presence:
-                    self.model.firefighter_presence[self.goal] = set()
-                self.model.firefighter_presence[self.goal].add(self.unique_id)
+                fire_list = self.model.commander.get_fires()
+                if fire_list: # Vote
+                    if not hasattr(self, '_vote') or self._vote is None:
+                        # Cast vote if not yet voted this round
+                        self._vote = self.random.choice(self.model.commander.get_fires())
+                else:
+                    # No fire, return to firestation
+                    if self.pos != self.fire_station_position:
+                        self.move_towards(self.fire_station_position)
 
-                # Check for sufficient firefighters to put out the fire
-                if len(self.model.firefighter_presence[self.goal]) >= 3:
-                    # Extinguish the fire
-                    for agent in self.model.grid.get_cell_list_contents(self.goal):
-                        if isinstance(agent, TreeAgent) and agent.on_fire:
-                            agent.on_fire = False
-                            self.model.commander.known_fires.discard(self.goal)
-                            break
-
-                    # Reset fire info
-                    del self.model.firefighter_presence[self.goal]
-
-                    # All firefighters on this goal reset
-                    for agent in self.model.agents:
-                        if isinstance(agent, FirefighterAgent): #and agent.goal == self.goal
-                            agent.goal = None
-        else:
-            fire_list = self.model.commander.get_fires()
-            if fire_list: # Vote
-                if not hasattr(self, '_vote') or self._vote is None:
-                    # Cast vote if not yet voted this round
-                    self._vote = self.random.choice(self.model.commander.get_fires())
-            else:
-                # No fire, return to firestation
-                if self.pos != self.fire_station_position:
-                    self.move_towards(self.fire_station_position)
+        # Check current cell for arsonist to become injured or hospital to heal
+        cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        for agent in cell_agents:
+            if isinstance(agent, ArsonistAgent):
+                self.injury_points = INJURY_POINTS
+                break  # No need to check further
+            if isinstance(agent, HospitalAgent):
+                self.injury_points -= 1
+                break
 
 class PolicemanAgent(Agent):
     def __init__(self, model, policestation_position, prison_position):
@@ -168,12 +212,37 @@ class PolicemanAgent(Agent):
 
         '''if self.target_arsonist is None:
             self.move_towards(self.policestation_position)'''
+        
+class AmbulanceAgent(Agent):
+    def __init__(self, model, hospital_position):
+        super().__init__(model)
+        self.hospital_position = hospital_position
+        self.target_patient = None
+
+    def step(self):
+        if self.target_patient is not None:
+            if self.pos == self.target_patient:
+                self.target_patient = None
+            else:
+                self.move_towards(self.target_patient)
+        else:
+            self.target_patient = self.model.commander.get_injured_position()
+            if self.target_patient is not None:
+                self.move_towards(self.target_patient)
+
+        # Check if patient is at current position
+        cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        for agent in cell_agents:
+            if (isinstance(agent, CitizenAgent) or isinstance(agent, FirefighterAgent)) and agent.injury_points > 0:
+                # Move patient to the hospital
+                self.model.grid.move_agent(agent, self.hospital_position)
 
 class CommanderAgent(Agent):
     def __init__(self, model):
         super().__init__(model)
         self.known_fires = set()
         self.known_arsonist_positions = []
+        self.known_injured = set()
 
     def report_fire(self, pos):
         self.known_fires.add(pos)
@@ -187,6 +256,16 @@ class CommanderAgent(Agent):
     def get_arsonist_position(self):
         if len(self.known_arsonist_positions) > 0:
             return self.known_arsonist_positions.pop(0)
+        else:
+            return None
+        
+    def report_injured(self, pos):
+        self.known_injured.add(pos)
+
+    def get_injured_position(self):
+        #return self.known_injured
+        if len(self.known_injured) > 0:
+            return self.known_injured.pop()
         else:
             return None
     
