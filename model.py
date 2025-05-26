@@ -1,14 +1,18 @@
 from mesa import Model
 from mesa.space import MultiGrid
+from stable_baselines3 import PPO
 from agents import TreeAgent, PrisonAgent, PolicestationAgent, FirestationAgent, HospitalAgent, CitizenAgent, ArsonistAgent, FirefighterAgent, PolicemanAgent, AmbulanceAgent, CommanderAgent
 
 class DisasterModel(Model):
-    def __init__(self, width, height, num_trees=20, num_prison=1, num_policestations=1, num_firestations=1, num_hospitals=1, num_citizens=10, num_arsonists=3, num_firefighters=3, num_policemen=4, num_ambulances=3):
+    def __init__(self, width, height, num_trees=20, num_prison=1, num_policestations=1, num_firestations=1, num_hospitals=1, num_citizens=10, num_arsonists=1, num_firefighters=3, num_policemen=4, num_ambulances=3):
         super().__init__()
         self.grid = MultiGrid(width, height, torus=False)
         self.global_map = {}
         self.firefighter_presence = {} # key: fire_position, value: set of firefighter IDs
         self.num_firefighters = num_firefighters
+
+        # Load model
+        self.ppo_arsonist = PPO.load('nn/ppo_arsonist')
 
         # Create agents
         prison_positions = []
@@ -45,7 +49,8 @@ class DisasterModel(Model):
             self.place_agent(agent)
 
         for _ in range(num_arsonists):
-            agent = ArsonistAgent(self)
+            prison_position = prison_positions[0] if len(prison_positions) > 0 else None
+            agent = ArsonistAgent(self, self.ppo_arsonist, prison_position)
             self.place_agent(agent)
 
         for _ in range(num_firefighters):

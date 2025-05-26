@@ -1,4 +1,6 @@
 from mesa import Agent
+from stable_baselines3 import PPO
+import numpy as np
 from utils import *
 
 INJURY_POINTS = 50 # Injury points received when encountering an arsonist
@@ -80,15 +82,23 @@ class CitizenAgent(Agent):
                 break
 
 class ArsonistAgent(Agent):
-    def __init__(self, model):
+    def __init__(self, model, rl_model, prison_position):
         super().__init__(model)
+        self.ppo_model = rl_model
         self.is_arrested = False
+        self.prison_position = prison_position
 
     def step(self):
         if self.is_arrested:
             return
         
-        # Look for policemen within 3 cells (Moore neighborhood)
+        obs = self.get_partial_observation() # 10x10 flattened
+
+        action, _ = self.ppo_model.predict(obs, deterministic=True)
+        print(action)
+        self.perform_action(action)
+        
+        '''# Look for policemen within 3 cells (Moore neighborhood)
         police_neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=False, radius=3)
         policemen = [a for a in police_neighbors if isinstance(a, PolicemanAgent)]
 
@@ -111,22 +121,143 @@ class ArsonistAgent(Agent):
         if self.pos != closest_tree.pos:
             self.move_towards(closest_tree.pos)
         else:
-            closest_tree.on_fire = True
+            closest_tree.on_fire = True'''
+        
+    def get_partial_observation(self):
+        width, height = self.model.grid.width, self.model.grid.height
+
+        # Create a numerical 2D representation of the grid (e.g., 0=empty, 1=tree, 2=burning, etc.)
+        grid_array = np.zeros((width, height), dtype=np.float32)
+        
+        for x in range(width):
+            for y in range(height):
+                cell = self.model.grid.get_cell_list_contents((x, y))
+                if not cell:
+                    grid_array[x, y] = 0
+                else:
+                    # Simple mapping based on agent type - match training environment
+                    for agent in cell:  # Check all agents in cell
+                        if isinstance(agent, TreeAgent):
+                            if agent.on_fire:
+                                grid_array[x, y] = 2  # Burning tree
+                            else:
+                                grid_array[x, y] = 1  # Normal tree
+                        elif isinstance(agent, PolicemanAgent):
+                            grid_array[x, y] = 3  # Cop
+                        elif isinstance(agent, CitizenAgent):
+                            grid_array[x, y] = 4  # Citizen
+                        elif isinstance(agent, FirefighterAgent):
+                            grid_array[x, y] = 5  # Firefighter
+
+        # Pad grid so we can always extract a centered 10x10
+        padded = np.pad(grid_array, pad_width=5, mode='constant', constant_values=0)
+        x, y = self.pos
+        x += 5
+        y += 5
+        local = padded[x - 5:x + 5, y - 5:y + 5]  # 10x10 window
+        return local.flatten().astype(np.float32)  # Shape: (100,)
+    
+    def perform_action(self, action):
+        """
+        Take an action in the environment with improved logic.
+        0 = do nothing
+        1 = move up  
+        2 = move down
+        3 = move left
+        4 = move right
+        5 = set fire to nearby trees
+        """
+        if action == 0:
+            pass  # do nothing
+        elif action == 1:
+            self.move(0, -1)  # move up
+        elif action == 2:
+            self.move(0, 1)   # move down
+        elif action == 3:
+            self.move(-1, 0)  # move left
+        elif action == 4:
+            self.move(1, 0)   # move right
+        elif action == 5:
+            self.set_fire()
+
+    def set_fire(self):
+        """Improved fire setting with proper tree checking"""
+        x, y = self.pos
+        ignited = False
+        
+        # Check current cell first
+        cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        for agent in cell_agents:
+            if isinstance(agent, TreeAgent) and not agent.on_fire:
+                agent.on_fire = True
+                ignited = True
+                print(f"Arsonist ignited tree at {self.pos}")
+                return
+        
+        # If no tree in current cell, check adjacent cells
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:  # Skip current cell
+                    continue
+                    
+                check_x, check_y = x + dx, y + dy
+                if self.model.grid.out_of_bounds((check_x, check_y)):
+                    continue
+                    
+                adjacent_agents = self.model.grid.get_cell_list_contents((check_x, check_y))
+                for agent in adjacent_agents:
+                    if isinstance(agent, TreeAgent) and not agent.on_fire:
+                        agent.on_fire = True
+                        ignited = True
+                        print(f"Arsonist ignited adjacent tree at ({check_x}, {check_y})")
+                        return
+        
+        if not ignited:
+            print(f"Arsonist tried to ignite but no trees nearby at {self.pos}")
+
+    def move(self, dx, dy):
+        """Improved movement with bounds checking"""
+        new_x = self.pos[0] + dx
+        new_y = self.pos[1] + dy
+        
+        if self.model.grid.out_of_bounds((new_x, new_y)):
+            print(f"Arsonist tried to move out of bounds to ({new_x}, {new_y})")
+            return
+            
+        # Check if target cell has immovable objects (buildings)
+        target_agents = self.model.grid.get_cell_list_contents((new_x, new_y))
+        for agent in target_agents:
+            if isinstance(agent, (PrisonAgent, PolicestationAgent, FirestationAgent, HospitalAgent)):
+                print(f"Arsonist can't move into building at ({new_x}, {new_y})")
+                return
+        
+        self.model.grid.move_agent(self, (new_x, new_y))
+        print(f"Arsonist moved to {self.pos}")
     
     def run_away_from(self, danger_pos):
         # Get all adjacent cells (Moore neighborhood radius=1)
         possible_moves = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
         
-        # Filter only empty cells
-        empty_cells = [pos for pos in possible_moves if self.model.grid.is_cell_empty(pos)]
+        # Filter only accessible cells (not buildings)
+        accessible_cells = []
+        for pos in possible_moves:
+            if self.model.grid.out_of_bounds(pos):
+                continue
+            cell_agents = self.model.grid.get_cell_list_contents(pos)
+            is_blocked = any(isinstance(agent, (PrisonAgent, PolicestationAgent, FirestationAgent, HospitalAgent)) 
+                           for agent in cell_agents)
+            if not is_blocked:
+                accessible_cells.append(pos)
 
-        if not empty_cells:
-            self.move_randomly()
+        if not accessible_cells:
+            print("Arsonist has nowhere to run!")
             return
 
         # Choose the farthest cell from the danger
-        farthest = max(empty_cells, key=lambda pos: manhattan_distance(pos, danger_pos))
+        farthest = max(accessible_cells, key=lambda pos: manhattan_distance(pos, danger_pos))
         self.model.grid.move_agent(self, farthest)
+        print(f"Arsonist ran away to {self.pos}")
+
 
 class FirefighterAgent(Agent):
     def __init__(self, model, fire_station_position):
